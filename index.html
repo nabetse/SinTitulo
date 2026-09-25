@@ -23,7 +23,7 @@
     padding:16px 20px 10px; flex:none; }
   .al-head h2 { margin:0; font-size:clamp(19px,2.8vw,26px); font-weight:600; letter-spacing:-.4px; line-height:1.15; }
   .al-head p { margin:4px 0 0; font-size:13.5px; font-weight:300; color:var(--suave); }
-  .al-propia { font-size:13px; color:var(--suave); text-decoration:none; white-space:nowrap;
+  .al-propia { position:absolute; left:12px; top:10px; z-index:2; background:rgba(233,237,228,.85); font-size:12.5px; color:var(--suave); text-decoration:none; white-space:nowrap;
     border:1.5px solid rgba(22,36,30,.22); border-radius:999px; padding:6px 13px; display:none; }
   .al-propia:hover { color:var(--tinta); border-color:var(--tinta); }
   .al-embebido .al-propia { display:inline-block; }
@@ -45,6 +45,11 @@
     animation:al-onda 3.6s cubic-bezier(.2,.6,.3,1) infinite; opacity:0; }
   .al-onda:nth-of-type(2) { animation-delay:1.2s; }
   .al-onda:nth-of-type(3) { animation-delay:2.4s; }
+  /* En CreaTV (y en cualquier receptora) la señal llega: las ondas se cierran hacia el centro. */
+  .al-onda-entra { animation-name:al-onda-entra; animation-timing-function:cubic-bezier(.55,0,.85,.45); }
+  .al-onda-entra:nth-of-type(2) { animation-delay:1.2s; }
+  .al-onda-entra:nth-of-type(3) { animation-delay:2.4s; }
+  @keyframes al-onda-entra { 0% { transform:scale(1); opacity:0; } 25% { opacity:.6; } 100% { transform:scale(.25); opacity:0; } }
   @keyframes al-onda { 0% { transform:scale(.25); opacity:.75; } 100% { transform:scale(1); opacity:0; } }
   .al-ruta-viva { stroke-dasharray:2 10; animation:al-flujo 1.6s linear infinite; }
   @keyframes al-flujo { to { stroke-dashoffset:-12; } }
@@ -89,18 +94,11 @@
 </head>
 <body>
 <div class="al" id="al">
-  <div class="al-head">
-    <div>
-      <h2>Alcance</h2>
-      <p id="al-sub">Emisoras de <i>Sin Título</i> y las rutas de su señal hacia CreaTV</p>
-    </div>
-    <a class="al-propia" id="al-propia" href="https://nabetse.github.io/SinTitulo/" target="_blank" rel="noopener">Abrir el mapa aparte ↗</a>
-  </div>
-
   <div class="al-stage" id="al-stage">
     <svg id="al-svg" role="img" aria-labelledby="al-titulo-svg" preserveAspectRatio="xMidYMid meet">
       <title id="al-titulo-svg">Mapa de América acostado, con la costa del Pacífico abajo, y las rutas de las emisoras hacia CreaTV en San José, California</title>
     </svg>
+    <a class="al-propia" id="al-propia" href="https://nabetse.github.io/SinTitulo/" target="_blank" rel="noopener">Abrir el mapa aparte ↗</a>
     <div class="al-aviso" id="al-aviso"></div>
     <div class="al-panel" id="al-panel" role="dialog" aria-live="polite">
       <button class="al-cerrar" id="al-cerrar" aria-label="Cerrar">×</button>
@@ -165,18 +163,29 @@
   function enlaceSeguro(u) { return /^https?:\/\//i.test(u || "") ? u : ""; }
 
   /* ---------- el fondo ---------- */
-  svg.setAttribute("viewBox", "0 0 " + BASE.W + " " + BASE.H);
+  // Recorte vertical: el mapa no muestra toda Suramérica, sólo la franja con organizaciones.
+  // Se ajusta en dibujar(); los bordes arriba y abajo se desvanecen como el norte.
+  var VB = { x:0, y:0, w:BASE.W, h:BASE.H };
   var defs = el("defs", {}, svg);
-  // El norte (izquierda) se desvanece: el mapa no termina en un corte recto.
-  var gr = el("linearGradient", { id:"al-fundido", x1:"0", x2:"1", y1:"0", y2:"0" }, defs);
-  el("stop", { offset:"0", "stop-color":"#fff", "stop-opacity":"0" }, gr);
-  el("stop", { offset:"0.10", "stop-color":"#fff", "stop-opacity":"1" }, gr);
-  el("stop", { offset:"0.97", "stop-color":"#fff", "stop-opacity":"1" }, gr);
-  el("stop", { offset:"1", "stop-color":"#fff", "stop-opacity":"0" }, gr);
+  function gradiente(id, vertical) {
+    var g = el("linearGradient", { id:id, x1:"0", x2:vertical ? "0" : "1", y1:"0", y2:vertical ? "1" : "0" }, defs);
+    var paradas = vertical ? [[0, 0], [0.12, 1], [0.9, 1], [1, 0]] : [[0, 0], [0.10, 1], [0.97, 1], [1, 0]];
+    paradas.forEach(function (p) { el("stop", { offset:p[0], "stop-color":"#fff", "stop-opacity":p[1] }, g); });
+  }
+  gradiente("al-fundido", false); gradiente("al-fundido-v", true);
   var mk = el("mask", { id:"al-mascara" }, defs);
   el("rect", { x:0, y:0, width:BASE.W, height:BASE.H, fill:"url(#al-fundido)" }, mk);
+  var mkv = el("mask", { id:"al-mascara-v" }, defs);
+  var rectV = el("rect", { x:0, y:0, width:BASE.W, height:BASE.H, fill:"url(#al-fundido-v)" }, mkv);
+  function encuadrar(top, bottom) {
+    VB = { x:0, y:top, w:BASE.W, h:bottom - top };
+    svg.setAttribute("viewBox", VB.x + " " + VB.y + " " + VB.w + " " + VB.h);
+    rectV.setAttribute("y", top); rectV.setAttribute("height", bottom - top);
+  }
+  encuadrar(0, BASE.H);
 
-  var capaTierra = el("g", { mask:"url(#al-mascara)" }, svg);
+  var capaTierraV = el("g", { mask:"url(#al-mascara-v)" }, svg);
+  var capaTierra = el("g", { mask:"url(#al-mascara)" }, capaTierraV);
   el("path", { d:BASE.d, fill:"#DFE5D8", stroke:"#16241E", "stroke-opacity":".55",
                "stroke-width":".8", "stroke-linejoin":"round" }, capaTierra);
   var capaRutas = el("g", {}, svg);
@@ -197,14 +206,14 @@
     var nx = dy / largo, ny = -dx / largo;
     if (ny > 0) { nx = -nx; ny = -ny; }          // positivo = hacia arriba
     var qx = mx + nx * largo * f, qy = my + ny * largo * f;
-    qx = Math.max(8, Math.min(BASE.W - 8, qx)); qy = Math.max(8, Math.min(BASE.H - 8, qy));
+    qx = Math.max(8, Math.min(BASE.W - 8, qx)); qy = Math.max(VB.y + 8, Math.min(VB.y + VB.h - 8, qy));
     return "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + "Q" + qx.toFixed(1) + " " +
            qy.toFixed(1) + " " + b[0].toFixed(1) + " " + b[1].toFixed(1);
   }
 
-  function ondas(g, x, y, r, color) {
+  function ondas(g, x, y, r, color, entra) {
     for (var i = 0; i < 3; i++)
-      el("circle", { "class":"al-onda", cx:x, cy:y, r:r, stroke:color }, g);
+      el("circle", { "class":"al-onda" + (entra ? " al-onda-entra" : ""), cx:x, cy:y, r:r, stroke:color }, g);
   }
 
   var cajas = [];
@@ -215,7 +224,7 @@
       if (IGNORAR_RUTAS && c.ruta) continue;
       if (b.x < c.x + c.w && b.x + b.w > c.x && b.y < c.y + c.h && b.y + b.h > c.y) return true;
     }
-    var L = LIMITE || { x:2, y:2, w:BASE.W - 4, h:BASE.H - 4 };
+    var L = LIMITE || { x:VB.x + 2, y:VB.y + 2, w:VB.w - 4, h:VB.h - 4 };
     return b.x < L.x || b.y < L.y || b.x + b.w > L.x + L.w || b.y + b.h > L.y + L.h;
   }
   function marcador(g, estado, x, y) {
@@ -364,6 +373,11 @@
     var destinos = datos.destinos || {};
     var pos = {};
     orgs.forEach(function (o) { o.p = proyectar(o.lon, o.lat); pos[o.nombre] = o.p; });
+    // Arriba: un poco por encima de São Paulo, o más si alguna organización queda más arriba.
+    // Abajo: justo debajo del recuadro de Colombia.
+    var tope = proyectar(-46.6, -23.5)[1] - 48;
+    orgs.forEach(function (o) { tope = Math.min(tope, o.p[1] - 40); });
+    encuadrar(Math.max(0, tope), Math.min(BASE.H, CAJA.y + CAJA.h + 14));
 
     // Receptoras: organizaciones que figuran como destino de alguna ruta.
     var receptoras = {};
@@ -410,7 +424,7 @@
 
     // El centro: CreaTV, con ondas de transmisión.
     var gC = el("g", { "class":"al-punto", tabindex:0, role:"button", "aria-label":centro.nombre }, capaPuntos);
-    ondas(gC, pc[0], pc[1], 34, COLOR.centro);
+    ondas(gC, pc[0], pc[1], 34, COLOR.centro, true);
     el("circle", { cx:pc[0], cy:pc[1], r:9, fill:"#fff", stroke:COLOR.centro, "stroke-width":2.4 }, gC);
     el("circle", { cx:pc[0], cy:pc[1], r:4.2, fill:COLOR.centro }, gC);
     abrible(gC, [{ centro:true, nombre:centro.nombre, lugar:centro.lugar }]);
@@ -419,7 +433,7 @@
     Object.keys(receptoras).forEach(function (n) {
       var p = receptoras[n];
       var g = el("g", { "aria-hidden":"true" }, capaPuntos);
-      ondas(g, p[0], p[1], 22, COLOR.centro);
+      ondas(g, p[0], p[1], 22, COLOR.centro, true);
     });
 
     // Colombia se amontona: si hay varias allí, van también en un recuadro ampliado.
@@ -536,8 +550,13 @@
     aviso.style.display = "block";
   }
 
-  function construir(datos) {
+  function construir(datos, deCache) {
+    if (datos && !datos.error) {
+      ultimo = datos;
+      if (!deCache) { try { localStorage.setItem("alcance-v1", JSON.stringify(datos)); } catch (err) {} }
+    }
     if (!datos || datos.error) {
+      if (ultimo) { aviso.style.display = "none"; return; }   // se queda con lo último que vio
       dibujar({});
       decir("No pude leer la hoja.", datos && datos.error ? datos.error : "");
       return;
@@ -566,6 +585,12 @@
       dibujar({});
       return;
     }
+    // La API tarda (Apps Script puede demorar 5–10 s en despertar). Mientras tanto se dibuja
+    // lo último que este navegador vio, o al menos el continente y CreaTV.
+    var guardado = null;
+    try { guardado = JSON.parse(localStorage.getItem("alcance-v1") || "null"); } catch (err) {}
+    if (guardado && guardado.organizaciones) construir(guardado, true);
+    else { dibujar({}); decir("Cargando el mapa…", ""); }
     fetch(url, { redirect:"follow" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(construir)
@@ -573,7 +598,16 @@
   }
 
   window.alcanceDibujar = construir;   // para pruebas locales
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(cargar); else cargar();
+  // Arranca cuando cargue la tipografía, pero sin esperarla más de 1,5 s (en pestañas en
+  // segundo plano el navegador puede demorarla indefinidamente).
+  var arrancado = false, ultimo = null;
+  function arrancar() { if (arrancado) return; arrancado = true; cargar(); }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(arrancar);
+  setTimeout(arrancar, 1500);
+  // Si la página se abrió oculta, se redibuja al mostrarse (las medidas de las etiquetas dependen de eso).
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && ultimo) construir(ultimo);
+  });
 })();
 </script>
 </body>
